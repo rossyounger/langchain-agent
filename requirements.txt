@@ -1,0 +1,5 @@
+langchain
+openai
+snscrape
+python-dotenv
+notion-client
