@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# langchain-agent
-news filterer
-=======
 # LangChain Agent Starter
 
 ## How to Run
@@ -17,4 +13,3 @@ news filterer
 
 4. Run the script:
     python main.py
->>>>>>> 7458ea3 (Initial commit)
