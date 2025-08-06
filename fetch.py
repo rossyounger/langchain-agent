@@ -27,32 +27,33 @@ class ContentItem:
                 f"{self.source}{self.author}{self.title}{self.content}".encode()
             ).hexdigest()
             self.id = f"{self.source}_{content_hash[:10]}"
-    
-    
+
 class TwitterFetcher:
-"""Playwright-based Twitter scraper"""
-
-def __init__(self):
-    self.browser = None
-    self.context = None
-
-async def _init_browser(self):
-    """Initialize browser with anti-detection"""
-    if self.browser is None:
-        playwright = await async_playwright().start()
-        self.browser = await playwright.chromium.launch(
-            headless=True,
-            args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
-        )
-        
-        self.context = await self.browser.new_context(
-            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            viewport={'width': 1280, 'height': 720}
-        )
-        
-        await self
-
-async def fetch_user_tweets(self, username: str, max_tweets: int = 20) -> List[ContentItem]:
+    """Playwright-based Twitter scraper"""
+    
+    def __init__(self):
+        self.browser = None
+        self.context = None
+    
+    async def _init_browser(self):
+        """Initialize browser with anti-detection"""
+        if self.browser is None:
+            playwright = await async_playwright().start()
+            self.browser = await playwright.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
+            )
+            
+            self.context = await self.browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1280, 'height': 720}
+            )
+            
+            await self.context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            """)
+    
+    async def fetch_user_tweets(self, username: str, max_tweets: int = 20) -> List[ContentItem]:
         """Fetch tweets from a single user"""
         await self._init_browser()
         page = await self.context.new_page()
@@ -74,7 +75,16 @@ async def fetch_user_tweets(self, username: str, max_tweets: int = 20) -> List[C
                         break
                     
                     try:
-    # Get timestamp
+                        # Extract tweet text
+                        text_element = await tweet.query_selector('[data-testid="tweetText"]')
+                        if not text_element:
+                            continue
+                            
+                        text = await text_element.inner_text()
+                        if not text or len(text.strip()) == 0:
+                            continue
+                        
+                        # Get timestamp
                         time_element = await tweet.query_selector('time')
                         datetime_str = await time_element.get_attribute('datetime') if time_element else None
                         tweet_date = datetime.now()
@@ -114,7 +124,8 @@ async def fetch_user_tweets(self, username: str, max_tweets: int = 20) -> List[C
                     break
                 last_height = new_height
                 scroll_attempts += 1
-                except Exception as e:
+                
+        except Exception as e:
             logger.error(f"Error scraping {username}: {e}")
         finally:
             await page.close()
@@ -143,7 +154,8 @@ class RSSFetcher:
                     pub_date = datetime(*entry.published_parsed[:6])
                 elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
                     pub_date = datetime(*entry.updated_parsed[:6])
-                    # Extract content
+                
+                # Extract content
                 content = ""
                 if hasattr(entry, 'content') and entry.content:
                     content = entry.content[0].value
@@ -170,7 +182,8 @@ class RSSFetcher:
             logger.error(f"Error parsing RSS feed {feed_url}: {e}")
         
         return items
-        # Updated functions to maintain compatibility with your existing code
+
+# Updated functions to maintain compatibility with your existing code
 async def fetch_tweets(usernames=None, max_tweets=20):
     """Updated fetch_tweets function using Playwright"""
     usernames = usernames or ["paulg", "sama", "naval"]
