@@ -12,10 +12,10 @@ def main_multi_source():
     """New main function with multiple data sources"""
     
     # Configure your sources
-    twitter_usernames = ["paulg", "sama", "naval", "elonmusk"]
+    twitter_usernames = ["S4mmyEth", "PinkBrains_io", "naval", "sama","kupor","StoryProtocol","JDVance","balajis"]
     rss_feeds = [
-        "https://feeds.feedburner.com/oreilly/radar",
-        "https://rss.cnn.com/rss/edition.rss",
+        "https://www.theverge.com/rss/index.html",
+        "https://www.wired.com/feed/tag/ai/latest/rss",
         "https://feeds.a16z.com/a16z.rss"
     ]
     
