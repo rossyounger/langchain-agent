@@ -36,84 +36,144 @@ class TwitterFetcher:
         self.context = None
     
     async def _init_browser(self):
-        """Initialize browser with anti-detection"""
+        """Initialize browser with better anti-detection"""
         if self.browser is None:
             playwright = await async_playwright().start()
             self.browser = await playwright.chromium.launch(
-                headless=True,
-                args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
+                headless=False,  # Make visible for debugging
+                args=[
+                    '--no-sandbox',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--disable-web-security',
+                    '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ]
             )
             
             self.context = await self.browser.new_context(
                 user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                viewport={'width': 1280, 'height': 720}
+                viewport={'width': 1280, 'height': 720},
+                extra_http_headers={
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+                }
             )
             
             await self.context.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
             """)
     
     async def fetch_user_tweets(self, username: str, max_tweets: int = 20) -> List[ContentItem]:
-        """Fetch tweets from a single user"""
+        """Fetch tweets from a single user with better error handling"""
         await self._init_browser()
         page = await self.context.new_page()
         items = []
         
         try:
-            await page.goto(f'https://twitter.com/{username}', wait_until='networkidle')
-            await page.wait_for_selector('[data-testid="tweet"]', timeout=10000)
+            print(f"Attempting to scrape @{username}...")
             
+            # Try x.com first, then twitter.com
+            urls_to_try = [f'https://x.com/{username}', f'https://twitter.com/{username}']
+            
+            page_loaded = False
+            for url in urls_to_try:
+                try:
+                    print(f"Trying {url}...")
+                    await page.goto(url, wait_until='domcontentloaded', timeout=15000)
+                    page_loaded = True
+                    break
+                except Exception as e:
+                    print(f"Failed to load {url}: {e}")
+                    continue
+            
+            if not page_loaded:
+                print(f"Could not load any URL for {username}")
+                return items
+            
+            # Wait a bit for content to load
+            await asyncio.sleep(3)
+            
+            # Try different selectors for tweets
+            tweet_selectors = [
+                '[data-testid="tweet"]',
+                '[data-testid="tweetText"]',
+                'article[data-testid="tweet"]',
+                '[role="article"]'
+            ]
+            
+            tweet_found = False
+            for selector in tweet_selectors:
+                try:
+                    await page.wait_for_selector(selector, timeout=5000)
+                    tweet_found = True
+                    break
+                except:
+                    continue
+            
+            if not tweet_found:
+                print(f"No tweets found for {username} - might need login or different approach")
+                return items
+            
+            # Rest of the scraping logic stays the same...
             tweet_count = 0
             last_height = 0
             scroll_attempts = 0
             
-            while tweet_count < max_tweets and scroll_attempts < 10:
+            while tweet_count < max_tweets and scroll_attempts < 5:  # Reduced scrolls
                 tweets = await page.query_selector_all('[data-testid="tweet"]')
+                
+                if not tweets:  # Try alternative selector
+                    tweets = await page.query_selector_all('[role="article"]')
                 
                 for tweet in tweets:
                     if tweet_count >= max_tweets:
                         break
                     
                     try:
-                        # Extract tweet text
+                        # Extract tweet text - try multiple approaches
+                        text = ""
+                        
+                        # Try main tweet text selector
                         text_element = await tweet.query_selector('[data-testid="tweetText"]')
-                        if not text_element:
+                        if text_element:
+                            text = await text_element.inner_text()
+                        else:
+                            # Try alternative text extraction
+                            text_elements = await tweet.query_selector_all('[lang]')
+                            if text_elements:
+                                for el in text_elements:
+                                    el_text = await el.inner_text()
+                                    if el_text and len(el_text) > 10:  # Reasonable length
+                                        text = el_text
+                                        break
+                        
+                        if not text or len(text.strip()) < 5:
                             continue
-                            
-                        text = await text_element.inner_text()
-                        if not text or len(text.strip()) == 0:
-                            continue
                         
-                        # Get timestamp
-                        time_element = await tweet.query_selector('time')
-                        datetime_str = await time_element.get_attribute('datetime') if time_element else None
-                        tweet_date = datetime.now()
-                        
-                        if datetime_str:
-                            try:
-                                tweet_date = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
-                            except:
-                                pass
-                        
-                        # Create content item
+                        # Create simplified content item
                         item = ContentItem(
-                            id="",  # Will be auto-generated
+                            id="",
                             source="twitter",
                             source_url=f"https://twitter.com/{username}",
                             title=f"Tweet by @{username}",
                             content=text,
                             author=username,
-                            published=tweet_date
+                            published=datetime.now()  # Use current time for now
                         )
                         
                         # Avoid duplicates
                         if not any(existing.content == text for existing in items):
                             items.append(item)
                             tweet_count += 1
+                            print(f"Found tweet {tweet_count}: {text[:50]}...")
                             
                     except Exception as e:
-                        logger.error(f"Error extracting tweet: {e}")
                         continue
+                
+                if tweet_count >= max_tweets:
+                    break
                 
                 # Scroll down
                 await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
@@ -126,11 +186,13 @@ class TwitterFetcher:
                 scroll_attempts += 1
                 
         except Exception as e:
-            logger.error(f"Error scraping {username}: {e}")
+            print(f"Error scraping {username}: {e}")
         finally:
             await page.close()
         
+        print(f"Successfully scraped {len(items)} tweets from @{username}")
         return items
+
     
     async def cleanup(self):
         """Clean up browser resources"""

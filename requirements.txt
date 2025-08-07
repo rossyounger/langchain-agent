@@ -3,3 +3,6 @@ openai
 snscrape
 python-dotenv
 notion-client
+playwright
+feedparser
+asyncio-compat
