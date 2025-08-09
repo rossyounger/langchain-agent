@@ -1,4 +1,4 @@
-from fetch import fetch_tweets_sync, fetch_all_sources_sync
+from fetch import fetch_tweets_sync, fetch_all_sources_sync, get_filtered_content_sync
 from filter import is_signal
 from output import send_to_notion
 
@@ -9,46 +9,27 @@ def main():
     send_to_notion(signal)
 
 def main_multi_source():
-    """New main function with multiple data sources"""
+    """Enhanced main function using intelligent filtering"""
     
-    # Configure your sources
-    twitter_usernames = ["S4mmyEth", "PinkBrains_io", "naval", "sama","kupor","StoryProtocol","JDVance","balajis"]
-    rss_feeds = [
-        "https://www.theverge.com/rss/index.html",
-        "https://www.wired.com/feed/tag/ai/latest/rss",
-        "https://feeds.a16z.com/a16z.rss"
-    ]
+    print("🧠 Running Enhanced Content Intelligence Pipeline...")
     
-    # Fetch from all sources
-    print("Fetching from all sources...")
-    all_items = fetch_all_sources_sync(
-        twitter_usernames=twitter_usernames,
-        rss_feeds=rss_feeds,
-        max_per_source=10
+    # Get high-quality content directly from database (no manual filtering needed!)
+    high_quality_items = get_filtered_content_sync(
+        hours=24,      # Last 24 hours
+        min_score=0.7, # Only high-quality content  
+        limit=25       # Top 25 items
     )
     
-    print(f"Fetched {len(all_items)} total items")
+    print(f"✅ Found {len(high_quality_items)} high-quality items")
     
-    # Extract just the content for filtering (maintains compatibility)
-    all_content = [item.content for item in all_items]
-    
-    # Apply your existing filter
-    signal = [content for content in all_content if is_signal(content)]
-    
-    print(f"Found {len(signal)} signal items after filtering")
-    
-    # Send to Notion using your existing function
-    send_to_notion(signal)
-    
-    # Optional: Print some info about what was found
-    sources_summary = {}
-    for item in all_items:
-        if item.source in sources_summary:
-            sources_summary[item.source] += 1
-        else:
-            sources_summary[item.source] = 1
-    
-    print("Sources summary:", sources_summary)
+    # Send to Notion (these are already smart-filtered)
+    if high_quality_items:
+        # Convert to strings for your existing send_to_notion function
+        content_strings = [item['content'] for item in high_quality_items]
+        send_to_notion(content_strings)
+        print(f"📋 Sent {len(content_strings)} items to Notion")
+    else:
+        print("ℹ️  No new high-quality content found")
 
 if __name__ == "__main__":
     # Use the original main() or the new main_multi_source()
