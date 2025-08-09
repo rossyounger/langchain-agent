@@ -1,8 +1,24 @@
+# Existing dependencies
 langchain
 openai
-snscrape
 python-dotenv
 notion-client
 playwright
 feedparser
-asyncio-compat
+
+# NEW: Database and AI dependencies
+asyncpg
+pgvector
+supabase
+
+# Enhanced processing
+pydantic
+pyyaml
+numpy
+scikit-learn
+
+# Optional: For future enhancements
+spacy
+beautifulsoup4
+requests
+aiohttp
